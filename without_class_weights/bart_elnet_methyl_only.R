@@ -1,0 +1,50 @@
+library(MethylPipeR)
+
+runInformation <- beginPipelineRun(note = 'BART survival model - features selected with logistic elnet (methylation only, no class weights), rows with na covariates removed (timestamp: 2021_03_31_10_45_31). Train on wave 3', 
+                                   logFolderPath = '/path/to/log/folder/')
+
+trainingData <- loadData('/path/to/training/data')
+trainingTarget <- loadData('/path/to/training/target')
+
+# Here we select rows -1 to exclude the intercept.
+selectedFeatures <- read.csv('/path/to/selected/features')[-1, 'X']
+
+trainingData <- cbind(trainingData, as.matrix(trainingTarget[, c('family_diabetes', 'high_BP')]))
+trainingData <- trainingData[, selectedFeatures]
+
+trainingRowsToKeep <- !is.na(trainingTarget$family_diabetes)
+trainingData <- trainingData[trainingRowsToKeep, ]
+trainingTarget <- trainingTarget[trainingRowsToKeep, ]
+row.names(trainingTarget) <- NULL
+
+gc()
+
+removeDeathsFromControlsResult <- removeDeathsFromControls(trainingTarget, list(trainingData))
+trainingData <- removeDeathsFromControlsResult$objectsFiltered[[1]]
+trainingTarget <- removeDeathsFromControlsResult$targetFiltered
+removeDeathsFromControlsResult <- NULL
+gc()
+
+trainingFolds <- assignTrainingFolds(trainingTarget, 'Event', 3, runInformation)
+
+testData <- loadData('/path/to/test/data')
+testTarget <- loadData('/path/to/test/target')
+
+testData <- cbind(testData, as.matrix(testTarget[, c('family_diabetes', 'high_BP')]))
+testData <- testData[, selectedFeatures]
+
+testRowsToKeep <- !is.na(testTarget$family_diabetes)
+testData <- testData[testRowsToKeep, ]
+testTarget <- testTarget[testRowsToKeep, ]
+row.names(testTarget) <- NULL
+gc()
+
+removeDeathsFromControlsResult <- removeDeathsFromControls(testTarget, list(testData))
+testData <- removeDeathsFromControlsResult$objectsFiltered[[1]]
+testTarget <- removeDeathsFromControlsResult$targetFiltered
+removeDeathsFromControlsResult <- NULL
+gc()
+
+bartSurvivalModel <- fitBARTSurvival(trainXs = trainingData, trainTarget = trainingTarget, testXs = testData, pipelineRunInformation = runInformation)
+
+endPipelineRun(runInformation)
